@@ -31,5 +31,6 @@
     "--compile-commands-dir=c:\\Users\\667323\\OneDrive - Culver Educational Foundation\\Documents\\School\\2nd Class\\Engineering - Honors\\.espressif\\1st Prototype - Engineering Honors\\build"
   ],
   "idf.port": "COM5",
-  "C_Cpp.dimInactiveRegions": false
+  "C_Cpp.dimInactiveRegions": false,
+  "idf.flashType": "JTAG"
 }

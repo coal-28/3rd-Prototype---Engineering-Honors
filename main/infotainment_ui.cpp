@@ -19,14 +19,14 @@ enum Page { NAV, RADIO, PHONE, MUSIC, TEMPERATURE };
 constexpr int SCREEN_W = 1024;
 constexpr int SCREEN_H = 600;
 constexpr int HUB_X = 150;
-constexpr int HUB_Y = 0;
+constexpr int HUB_Y = 32;
 constexpr int HUB_W = 724;
 constexpr int HUB_H = 480;
 constexpr int HUB_NAV_H = 164;
 enum NavState { NAV_HOME, NAV_SEARCH, NAV_PRESETS, NAV_NEARBY, NAV_ROUTES, NAV_ACTIVE, NAV_ARRIVED };
 enum PhoneState { CONTACTS, CALLING, CONNECTED, KEYPAD };
 enum MusicState { LIBRARY, NOW_PLAYING };
-Page page=TEMPERATURE; NavState nav=NAV_HOME; PhoneState phone=CONTACTS; MusicState music=LIBRARY;
+Page page=NAV; NavState nav=NAV_HOME; PhoneState phone=CONTACTS; MusicState music=LIBRARY;
 lv_obj_t *root=nullptr,*content=nullptr,*sidebar=nullptr,*climate=nullptr,*vehicle=nullptr;
 lv_obj_t *page_btn[4]={},*vehicle_btn[6]={},*temp_label[2]={},*temp_marker[2]={};
 lv_obj_t *seat_bar[2][3]={},*fan_bar[7]={},*vol_label=nullptr,*radio_label=nullptr,*call_label=nullptr,*music_progress=nullptr;
@@ -97,13 +97,14 @@ int climate_hold_id=0;
 int climate_hold_ms=0;
 bool climate_hold_repeated=false;
 lv_obj_t *radio_minus=nullptr,*radio_plus=nullptr;
-lv_obj_t *radio_preset_btn[3]={};
+lv_obj_t *radio_preset_btn[2]={};
 lv_obj_t *radio_permanent_label=nullptr;
 lv_obj_t *media_prev_btn=nullptr,*media_next_btn=nullptr,*media_toggle_btn=nullptr;
 lv_obj_t *home_temp_label[2]={};
 lv_obj_t *home_temp_slider[2]={};
 lv_obj_t *home_seat_bar[2][3]={};
 lv_obj_t *home_fan_bar[7]={};
+lv_obj_t *bottom_fan_number=nullptr;
 int media_mode=0; // 0 radio, 1 music
 bool permanent_radio_hold=false;
 void refresh_media();
@@ -254,17 +255,57 @@ void page_click(lv_event_t *e){
   refresh_media();
 }
 void update_navigation_buttons(){
- const char *names[]={"Navigation","Radio","Phone","Music"};
- for(int i=0;i<4;i++){
-  if(!page_btn[i])continue;
-  bool active=(page==(Page)i);
-  lv_obj_t *t=lv_obj_get_child(page_btn[i],0);
-  lv_label_set_text(t,active?"Temperature":names[i]);
-  lv_obj_remove_event_cb(page_btn[i],page_click);
-  lv_obj_add_event_cb(page_btn[i],page_click,LV_EVENT_CLICKED,
-   (void*)(intptr_t)(active?TEMPERATURE:i));
-  lv_obj_set_style_bg_color(page_btn[i],color(PANEL),0);
-  lv_obj_set_style_text_color(t,color(WHITE),0);
+ // TL, TR, BL, BR for each page.
+ int order[4]={NAV,RADIO,MUSIC,PHONE};
+
+ if(page==MUSIC){
+  order[1]=MUSIC;
+  order[2]=RADIO;
+ }
+ else if(page==PHONE){
+  order[1]=PHONE;
+  order[2]=RADIO;
+  order[3]=MUSIC;
+ }
+
+ const char *names[]={
+  "Navigation","Radio","Phone","Music"
+ };
+
+ for(int slot=0;slot<4;slot++){
+  int p=order[slot];
+  lv_obj_t *btn=page_btn[p];
+  if(!btn)continue;
+
+  bool active=(page==(Page)p);
+  Page target=active?TEMPERATURE:(Page)p;
+
+  lv_obj_set_pos(
+   btn,
+   12+(slot%2)*354,
+   4+(slot/2)*80
+  );
+
+  lv_obj_t *txt=lv_obj_get_child(btn,0);
+
+  lv_label_set_text(
+   txt,active?"Temperature":names[p]
+  );
+
+  lv_obj_remove_event_cb(btn,page_click);
+
+  lv_obj_add_event_cb(
+   btn,page_click,LV_EVENT_CLICKED,
+   (void*)(intptr_t)target
+  );
+
+  lv_obj_set_style_bg_color(
+   btn,color(PANEL),0
+  );
+
+  lv_obj_set_style_text_color(
+   txt,color(WHITE),0
+  );
  }
 }
 void vehicle_click(lv_event_t *e){int n=(int)(intptr_t)lv_event_get_user_data(e);vehicle_on[n]=!vehicle_on[n];refresh_shell();}
@@ -348,7 +389,7 @@ void refresh_media(){
  lv_obj_update_layout(radio_permanent_label);
  lv_obj_set_pos(radio_permanent_label,
                 media_x+(media_w-label_w)/2,
-                (112-lv_obj_get_height(radio_permanent_label))/2);
+                (83-lv_obj_get_height(radio_permanent_label))/2);
 
  lv_obj_set_style_text_align(radio_permanent_label,LV_TEXT_ALIGN_CENTER,0);
 }
@@ -386,49 +427,52 @@ void permanent_media_press(lv_event_t *e){
 void draw_climate(){
  clear(climate);
  for(int i=0;i<7;i++)fan_bar[i]=nullptr;
+ bottom_fan_number=nullptr;
  media_prev_btn=nullptr;media_next_btn=nullptr;media_toggle_btn=nullptr;
  radio_permanent_label=nullptr;volume_slider=nullptr;vol_label=nullptr;
- // Bottom corners are reserved for outside temperature and time.
- box(climate,0,0,148,112,BG);
- label(climate,"OUTSIDE",6,10,136,24,YELLOW);
- lv_obj_t *outside=label(climate,"72\xC2\xB0" "F",6,44,136,43);
- lv_obj_set_style_text_font(outside,&lv_font_montserrat_28,0);
+ // Outside temperature is displayed in the top status strip.
  const bool home=(page==TEMPERATURE);
  // Home: no duplicate fan controls. Give the media and volume controls more room.
  const int mx=150, mw=home?355:244;
- box(climate,mx,0,mw,112,BG);
+ box(climate,mx,0,mw,83,BG);
  
- media_prev_btn=button(climate,"<",mx+5,29,40,54,media_action,0);
+ media_prev_btn=button(climate,"<",mx+5,9,40,65,media_action,0);
  lv_obj_add_event_cb(media_prev_btn,permanent_media_press,LV_EVENT_ALL,(void*)0);
- media_next_btn=button(climate,">",mx+mw-45,29,40,54,media_action,1);
+ media_next_btn=button(climate,">",mx+mw-45,9,40,65,media_action,1);
  lv_obj_add_event_cb(media_next_btn,permanent_media_press,LV_EVENT_ALL,(void*)1);
- radio_permanent_label=label(climate,"",mx+45,27,mw-90,58,YELLOW);
+ radio_permanent_label=label(climate,"",mx+45,13,mw-90,58,YELLOW);
 lv_obj_set_style_text_font(radio_permanent_label,&lv_font_montserrat_48,0);
  
  int vx=home?507:584;
  int vw=home?365:288;
  if(!home){
-  box(climate,396,0,186,112,BG);
+  box(climate,396,0,186,83,BG);
   label(climate,"FAN",405,5,168,23,YELLOW);
-  lv_obj_t *fm=button(climate,"-",401,38,40,53,fan_click,0);
+  lv_obj_t *fm=button(climate,"-",401,9,40,65,fan_click,0);
   lv_obj_add_event_cb(fm,climate_hold_event,LV_EVENT_ALL,(void*)(intptr_t)6);
-  for(int i=0;i<7;i++)fan_bar[i]=box(climate,449+i*12,80-i*5,9,10+i*5,GREY);
-  lv_obj_t *fp=button(climate,"+",537,38,40,53,fan_click,1);
+  bottom_fan_number=label(climate,"",449,9,80,65,YELLOW);
+  #if LV_FONT_MONTSERRAT_36
+  lv_obj_set_style_text_font(bottom_fan_number,&lv_font_montserrat_36,0);
+#else
+  lv_obj_set_style_text_font(bottom_fan_number,&lv_font_montserrat_32,0);
+#endif
+  lv_obj_set_style_text_align(bottom_fan_number,LV_TEXT_ALIGN_CENTER,0);
+  lv_obj_t *fp=button(climate,"+",537,9,40,65,fan_click,1);
   lv_obj_add_event_cb(fp,climate_hold_event,LV_EVENT_ALL,(void*)(intptr_t)7);
  }
- box(climate,vx,0,vw,112,BG);
+ box(climate,vx,0,vw,83,BG);
  label(climate,"VOLUME",vx+8,5,vw-16,23,YELLOW);
- lv_obj_t *vm=button(climate,"-",vx+8,29,45,54,volume_click,0);
+ lv_obj_t *vm=button(climate,"-",vx+8,9,45,65,volume_click,0);
  lv_obj_add_event_cb(vm,climate_hold_event,LV_EVENT_ALL,(void*)(intptr_t)4);
  volume_slider=lv_slider_create(climate);
- lv_obj_set_pos(volume_slider,vx+65,48);
+ lv_obj_set_pos(volume_slider,vx+65,34);
  lv_obj_set_size(volume_slider,vw-181,16);
  lv_slider_set_range(volume_slider,0,40);
  lv_obj_set_style_bg_color(volume_slider,color(GREY),LV_PART_MAIN);
  lv_obj_set_style_bg_color(volume_slider,color(YELLOW),LV_PART_INDICATOR);
  lv_obj_set_style_bg_color(volume_slider,color(WHITE),LV_PART_KNOB);
  lv_obj_add_event_cb(volume_slider,volume_drag,LV_EVENT_VALUE_CHANGED,nullptr);
- vol_label=label(climate,"",vx+vw-110,36,50,52);
+ vol_label=label(climate,"",vx+vw-110,15,50,52);
 #if LV_FONT_MONTSERRAT_36
 lv_obj_set_style_text_font(vol_label,&lv_font_montserrat_36,0);
 #elif LV_FONT_MONTSERRAT_32
@@ -438,12 +482,43 @@ lv_obj_set_style_text_font(vol_label,&lv_font_montserrat_28,0);
 #else
 lv_obj_set_style_text_font(vol_label,&lv_font_montserrat_20,0);
 #endif
- lv_obj_t *vp=button(climate,"+",vx+vw-53,29,45,54,volume_click,1);
+ lv_obj_t *vp=button(climate,"+",vx+vw-53,9,45,65,volume_click,1);
  lv_obj_add_event_cb(vp,climate_hold_event,LV_EVENT_ALL,(void*)(intptr_t)5);
- box(climate,874,0,150,112,BG);
- label(climate,"TIME",882,10,134,24,YELLOW);
- lv_obj_t *clock=label(climate,"6:24 PM",879,46,140,40);
- lv_obj_set_style_text_font(clock,&lv_font_montserrat_20,0);
+
+ // CONDITIONAL_BOTTOM_TEMPERATURE
+ temp_label[0]=nullptr;
+ temp_label[1]=nullptr;
+
+ if(page!=TEMPERATURE){
+
+  // Driver temperature - bottom-left corner
+  button(climate,"-",5,9,38,65,temperature_click,0);
+
+  temp_label[0]=label(
+   climate,"",45,17,58,48,YELLOW
+  );
+  lv_obj_set_style_text_font(temp_label[0],&lv_font_montserrat_28,0);
+  lv_obj_set_height(temp_label[0],LV_SIZE_CONTENT);
+  lv_obj_update_layout(temp_label[0]);
+  lv_obj_set_y(temp_label[0],
+   (83-lv_obj_get_height(temp_label[0]))/2);
+
+  button(climate,"+",105,9,38,65,temperature_click,1);
+
+  // Passenger temperature - bottom-right corner
+  button(climate,"-",881,9,38,65,temperature_click,2);
+
+  temp_label[1]=label(
+   climate,"",921,17,58,48,YELLOW
+  );
+  lv_obj_set_style_text_font(temp_label[1],&lv_font_montserrat_28,0);
+  lv_obj_set_height(temp_label[1],LV_SIZE_CONTENT);
+  lv_obj_update_layout(temp_label[1]);
+  lv_obj_set_y(temp_label[1],
+   (83-lv_obj_get_height(temp_label[1]))/2);
+
+  button(climate,"+",981,9,38,65,temperature_click,3);
+ }
 }
 void refresh_shell(){
  updating_shell=true;
@@ -462,7 +537,15 @@ void refresh_shell(){
   }
  }
 
- for(int i=0;i<7;i++)if(fan_bar[i])lv_obj_set_style_bg_color(fan_bar[i],color(i<fan?YELLOW:GREY),0);
+ if(bottom_fan_number){
+  char fan_text[8];
+  snprintf(fan_text,sizeof(fan_text),"%d",fan);
+  lv_label_set_text(bottom_fan_number,fan_text);
+  lv_obj_set_height(bottom_fan_number,LV_SIZE_CONTENT);
+  lv_obj_update_layout(bottom_fan_number);
+  lv_obj_set_y(bottom_fan_number,
+   (83-lv_obj_get_height(bottom_fan_number))/2);
+ }
  char b[12];snprintf(b,sizeof(b),"%d",volume);if(vol_label)lv_label_set_text(vol_label,b);if(volume_slider)lv_slider_set_value(volume_slider,volume,LV_ANIM_OFF);
  if(page==TEMPERATURE){
   for(int side=0;side<2;side++){
@@ -562,11 +645,11 @@ void radio_refresh(){
 
  if(page!=RADIO || radio_dial_open)return;
 
- for(int i=0;i<3;i++){
+ for(int i=0;i<2;i++){
   lv_obj_t *btn=radio_preset_btn[i];
   if(!btn)continue;
 
-  int index=radio_preset_page*3+i;
+  int index=radio_preset_page*2+i;
   if(index>=10)continue;
 
   bool selected=radio_idx[radio_band]==radio_presets10[radio_band][index];
@@ -638,8 +721,8 @@ void radio_page_click(lv_event_t *e){
  int direction=(int)(intptr_t)lv_event_get_user_data(e);
  radio_preset_page+=direction;
 
- if(radio_preset_page<0)radio_preset_page=3;
- if(radio_preset_page>3)radio_preset_page=0;
+ if(radio_preset_page<0)radio_preset_page=4;
+ if(radio_preset_page>4)radio_preset_page=0;
 
  render_content();
 }
@@ -756,7 +839,7 @@ void radio_draw(){
  radio_label=nullptr;
  radio_error_label=nullptr;
 
- for(int i=0;i<3;i++)radio_preset_btn[i]=nullptr;
+ for(int i=0;i<2;i++)radio_preset_btn[i]=nullptr;
 
  if(radio_idx[radio_band]==0)
   radio_idx[radio_band]=radio_min[radio_band];
@@ -799,50 +882,36 @@ void radio_draw(){
   radio_plus,tune_press,LV_EVENT_ALL,(void*)1
  );
 
- button(content,"DIAL",245,171,140,43,
+ button(content,"DIAL",245,311,140,46,
         radio_dial_open_click);
 
- // All ten presets are available by swiping vertically; no page arrows.
- lv_obj_t *presets_list=lv_obj_create(content);
-  // VERIFIED_LIST_GEOMETRY_Radio
-  lv_obj_set_align(presets_list,LV_ALIGN_TOP_LEFT);
-  lv_obj_set_pos(presets_list,24,224);
-  lv_obj_set_size(presets_list,lv_obj_get_width(content)-48,132);
- 
-  paint(presets_list,BG);
- lv_obj_set_style_pad_all(presets_list,0,0);
- lv_obj_set_scroll_dir(presets_list,LV_DIR_VER);
- lv_obj_set_scrollbar_mode(presets_list,LV_SCROLLBAR_MODE_OFF);
- 
-  // FINAL_CENTERED_Radio_Presets
-  
-  
-  lv_obj_set_scrollbar_mode(presets_list,LV_SCROLLBAR_MODE_OFF);
+ // ORIGINAL THREE-PRESET PAGINATED LAYOUT
+ for(int i=0;i<2;i++){
+  int index=radio_preset_page*2+i;
+  if(index>=10)continue;
 
-  // FINAL_INNER_BOX_LAYOUT_Radio
-  lv_obj_update_layout(content);
-  lv_obj_set_align(presets_list,LV_ALIGN_TOP_LEFT);
-  lv_obj_set_size(presets_list,lv_obj_get_content_width(content)-36,132);
-  lv_obj_set_pos(presets_list,18,224);
-  lv_obj_set_style_pad_all(presets_list,0,0);
-  lv_obj_set_scrollbar_mode(presets_list,LV_SCROLLBAR_MODE_OFF);
-for(int i=0;i<10;i++){
-  int v=radio_presets10[radio_band][i];
-  char text[48];
-  if(radio_band==0)snprintf(text,sizeof(text),"%d.%d",v/10,v%10);
-  else if(radio_band==1)snprintf(text,sizeof(text),"%d",v);
-  else snprintf(text,sizeof(text),"%d",v);
+  int v=radio_presets10[radio_band][index];
+
+  char text[32];
+  if(radio_band==0)
+   snprintf(text,sizeof(text),"%d.%d",v/10,v%10);
+  else
+   snprintf(text,sizeof(text),"%d",v);
+
   bool selected=radio_idx[radio_band]==v;
-  button(presets_list,text,2,2+i*62,lv_obj_get_content_width(presets_list)-4,59,radio_preset,i,selected?YELLOW:PANEL);
+
+  radio_preset_btn[i]=button(
+   content,text,
+   (15+i*370),190,230,105,
+   radio_preset,index,
+   selected?YELLOW:PANEL
+  );
  }
 
+ button(content,"<",15,311,190,46,radio_page_click,-1);
 
-  // CENTERED_ROWS_Radio_Presets
-  for(uint32_t j=0;j<lv_obj_get_child_count(presets_list);j++){
-    lv_obj_t *row=lv_obj_get_child(presets_list,j);
-    lv_obj_set_width(row,lv_obj_get_content_width(presets_list)-4);
-    lv_obj_set_x(row,2);
-  }
+
+ button(content,">",425,311,190,46,radio_page_click,1);
 }
 void music_refresh();
 
@@ -1462,7 +1531,7 @@ void render_content(){
  call_label=nullptr;music_progress=nullptr;music_slider=nullptr;
  music_time_label=nullptr;phone_number_label=nullptr;
  radio_minus=nullptr;radio_plus=nullptr;radio_label=nullptr;radio_error_label=nullptr;
- for(int i=0;i<3;i++)radio_preset_btn[i]=nullptr;
+ for(int i=0;i<2;i++)radio_preset_btn[i]=nullptr;
  clear(content);
  draw_climate();
  if(page==NAV)nav_draw();
@@ -1633,12 +1702,19 @@ for(int i=0;i<4;i++){
  vehicle=root;
  for(int i=0;i<6;i++){
   int vx=(i<3)?8:884;
-int vy=7+(i%3)*156;
+int vy=39+(i%3)*156;
 vehicle_btn[i]=button(vehicle,"",vx,vy,132,148,vehicle_click,i);
   vehicle_indicator[i]=box(vehicle_btn[i],18,7,96,5,GREY);
   vehicle_icon(vehicle_btn[i],i==3?ESC_OFF:(i==4?MARKER:(i==5?RECIRC:i)));
  }
- climate=box(root,0,485,1024,115,BG);
+ climate=box(root,0,517,1024,83,BG);
+
+ // Permanent top status strip.
+ lv_obj_t *top_strip=box(root,0,0,1024,32,BG);
+ lv_obj_t *outside_top=label(top_strip,"OUTSIDE 72\xC2\xB0" "F",8,3,230,25,YELLOW);
+ lv_obj_t *time_top=label(top_strip,"6:24 PM",790,3,224,25,YELLOW);
+ lv_obj_set_style_text_font(outside_top,&lv_font_montserrat_20,0);
+ lv_obj_set_style_text_font(time_top,&lv_font_montserrat_20,0);
    draw_climate();
   radio_idx[0]=radio_min[0];radio_idx[1]=radio_min[1];radio_idx[2]=radio_min[2];
   render_content();
