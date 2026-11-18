@@ -260,6 +260,8 @@ static esp_err_t lvgl_init(void)
         ILLUMINATE_ERROR("LVGL dsi port add fail");
     }
 
+    lv_display_set_rotation(my_lvgl_disp, LV_DISPLAY_ROTATION_180);
+
     /* Register the GT911 touch as the LVGL pointer input device. */
     const lvgl_port_touch_cfg_t touch_cfg = {
         .disp = my_lvgl_disp,
